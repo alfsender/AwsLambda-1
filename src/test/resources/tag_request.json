@@ -1,0 +1,13 @@
+{
+	"itemId": "VX-345",
+	"mediaType": "MUXED",
+	"opUnit": "EMEAWU",
+	"territory": "RUS",
+	"companySystemName": "DSBOps",
+	"files": [
+		{
+			"fileName": "test.mxf",
+			"canBeArchived": "true"
+		}
+	]
+}

@@ -1,0 +1,68 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Asset Restore State Machine, which will initiate restore and monitor progress.",
+  "Resources" : {
+    "InitiateRestoreLambda": {
+      "Type" : "AWS::Lambda::Function",
+      "Properties" : {
+        "Description" : "Lambda function to initiate asset restore process.",
+        "Code" : {
+          "S3Bucket" : "mc-lambda-dev",
+          "S3Key" : "InitiateRestoreLambda.zip"
+        },
+        "Environment" : {
+          "Variables" : {
+            "mainBucket": "step-test-bucket"
+          }
+        },
+        "FunctionName" : "InitiateRestoreLambda",
+        "Handler" : "com.sony.spe.tagging.lambda.InitiateRestoreLambda::handleRequest",
+        "MemorySize" : "512",
+        "Runtime" : "java8",
+        "Role" : "arn:aws:iam::823639940192:role/S3Lambda"
+      }
+    },
+    "MonitorRestoreAssetLambda": {
+      "Type" : "AWS::Lambda::Function",
+      "Properties" : {
+        "Description" : "Lambda function to monitor ongoing asset restore.",
+        "Code" : {
+          "S3Bucket" : "mc-lambda-dev",
+          "S3Key" : "MonitorRestoreAssetLambda.zip"
+        },
+        "Environment" : {
+          "Variables" : {
+            "mainBucket": "step-test-bucket",
+            "assetResponseFifoSQS": "asset-restore-response-dev.fifo"
+          }
+        },
+        "FunctionName" : "MonitorRestoreAssetLambda",
+        "Handler" : "com.sony.spe.tagging.lambda.MonitorRestoreAssetLambda::handleRequest",
+        "MemorySize" : "512",
+        "Runtime" : "java8",
+        "Role" : "arn:aws:iam::823639940192:role/S3Lambda"
+      }
+    },
+    "AssetRestoreStateMachine": {
+      "Type" : "AWS::StepFunctions::StateMachine",
+      "Properties" : {
+        "StateMachineName" : "AssetRestoreStateMachine",
+        "DefinitionString" : "{ \"Comment\": \"A new workflow to restore assets in s3.\", \"StartAt\": \"InitiateAssetRestore\", \"States\": { \"InitiateAssetRestore\": { \"Type\": \"Task\", \"Resource\": \"arn:aws:lambda:us-west-2:823639940192:function:InitiateRestoreLambda\", \"Next\": \"MonitorAssetRestore\" }, \"MonitorAssetRestore\": { \"Type\": \"Task\", \"Resource\": \"arn:aws:lambda:us-west-2:823639940192:function:MonitorRestoreAssetLambda\", \"Next\": \"CheckRestoreStatus\" }, \"CheckRestoreStatus\": { \"Type\": \"Choice\", \"Choices\": [ { \"Variable\": \"$.restoreStatus\", \"StringEquals\": \"RESTORE_IN_PROGRESS\", \"Next\": \"WaitForRestore\" }, { \"Variable\": \"$.restoreStatus\", \"StringEquals\": \"RESTORED\", \"Next\": \"EndRestoreProcess\" }, { \"Variable\": \"$.restoreStatus\", \"StringEquals\": \"RESTORE_FAILED\", \"Next\": \"EndRestoreProcess\" } ] }, \"WaitForRestore\": { \"Type\": \"Wait\", \"SecondsPath\": \"$.delay\", \"Next\": \"MonitorAssetRestore\" }, \"EndRestoreProcess\": { \"Type\": \"Pass\", \"End\": true } } }",
+        "RoleArn" : "arn:aws:iam::823639940192:role/service-role/StatesExecutionRole-us-west-2"
+      }
+    },
+    "AssetRestoreResponseSQS": {
+      "Type" : "AWS::SQS::Queue",
+      "Properties" : {
+        "FifoQueue" : true,
+        "ContentBasedDeduplication" : true,
+        "VisibilityTimeout" : "60",
+        "MessageRetentionPeriod" : "345600",
+        "MaximumMessageSize" : "262144",
+        "ReceiveMessageWaitTimeSeconds" : "0",
+        "DelaySeconds" : "0",
+        "QueueName" : "asset-restore-response-dev.fifo"
+      }
+    }
+  }
+}
